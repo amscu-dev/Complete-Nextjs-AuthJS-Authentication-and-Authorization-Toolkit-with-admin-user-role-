@@ -118,4 +118,7 @@ body,
   body {
     @apply bg-background text-foreground;
   }
+  ::placeholder {
+    @apply text-slate-300 italic text-sm font-normal !important;
+  }
 }

@@ -18,8 +18,14 @@ import FormError from "../form-error";
 import FormSuccess from "../form-success";
 import { login } from "@/actions/login";
 import { useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 
 function LoginForm() {
+  const searchParams = useSearchParams();
+  const urlError =
+    searchParams.get("error") === "OAuthAccountNotLinked"
+      ? "Email already in use with different provider"
+      : "";
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | undefined>("");
   const [success, setSuccess] = useState<string | undefined>("");
@@ -32,10 +38,9 @@ function LoginForm() {
   });
   // Aici putem vedea obiectul cu errori aparute din validarea ZOD
   // Fără Zod, validarea manuală ar însemna să folosești regulile de validare direct în configurarea register() a fiecărui câmp din formular.
-  const { errors } = form.formState;
+  // const { errors } = form.formState;
 
   const onSubmit = (values: z.infer<typeof LoginSchema>) => {
-    console.log(values);
     setError("");
     setSuccess("");
     startTransition(() => {
@@ -97,7 +102,7 @@ function LoginForm() {
               )}
             />
           </div>
-          <FormError message={error} />
+          <FormError message={error || urlError} />
           <FormSuccess message={success} />
           <Button type="submit" className="w-full">
             Login

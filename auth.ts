@@ -3,6 +3,7 @@ import authConfig from "./auth.config";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import { getUserById } from "./data/user";
+import { getTwoFactorConfirmationByUserId } from "@/data/two-factor-confirmation";
 // Sintaxa pentru ca Prisma sa poata fii utilizat pe edge.
 // NextAuth creează automat un utilizator în baza de date când cineva se autentifică cu OAuth, dar doar dacă folosești un adapter, cum ar fi PrismaAdapter.
 // În NextAuth, callback-urile jwt și session sunt executate la fiecare request pentru a menține sesiunea actualizată și validă.
@@ -48,6 +49,18 @@ export const {
       const existingUser = await getUserById(user.id);
       if (!existingUser || !existingUser.emailVerified) {
         return false;
+      }
+      // 3. 2FA Check
+
+      if (existingUser.isTwoFactorEnabled) {
+        const twoFactorConfirmation = await getTwoFactorConfirmationByUserId(
+          existingUser.id
+        );
+        if (!twoFactorConfirmation) return false;
+        // Delete two factor confirmation for next sign in
+        await db.twoFactorConfirmation.delete({
+          where: { id: twoFactorConfirmation.id },
+        });
       }
       return true; // Permitem autentificarea să continue
     },

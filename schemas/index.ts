@@ -12,6 +12,7 @@ export const LoginSchema = z.object({
     .regex(/[\W_]/, {
       message: "Password must contain at least one special character",
     }), // Conține un simbol special
+  code: z.optional(z.string()),
 });
 
 export const RegisterSchema = z.object({

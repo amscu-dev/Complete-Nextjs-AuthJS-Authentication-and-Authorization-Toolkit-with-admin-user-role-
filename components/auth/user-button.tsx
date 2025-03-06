@@ -1,15 +1,15 @@
 "use client";
+import LogoutButton from "@/components/auth/logout-button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { FaUser } from "react-icons/fa";
 import { useCurrentUser } from "@/hooks/use-current-user";
-import LogoutButton from "@/components/auth/logout-button";
 import { LogOut } from "lucide-react";
+import { FaUser } from "react-icons/fa";
 
 function UserButton() {
   const user = useCurrentUser();

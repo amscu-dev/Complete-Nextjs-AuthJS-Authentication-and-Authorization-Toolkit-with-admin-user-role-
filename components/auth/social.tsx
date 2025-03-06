@@ -1,16 +1,17 @@
 "use client";
+import { DEFAULT_LOGIN_REDIRECT } from "@/routes";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { FaGithub } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import { Button } from "../ui/button";
-import { DEFAULT_LOGIN_REDIRECT } from "@/routes";
-
 function Social() {
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl");
   // Cu aceasta tehnica putem apela sigIn de pe client nu prin server action
-
   const onClick = (provider: "google" | "github") => {
     signIn(provider, {
-      callbackUrl: DEFAULT_LOGIN_REDIRECT,
+      callbackUrl: callbackUrl || DEFAULT_LOGIN_REDIRECT,
     });
   };
   return (

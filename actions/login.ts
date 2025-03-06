@@ -1,45 +1,56 @@
 "use server";
-import { LoginSchema } from "@/schemas";
-import { z } from "zod";
 import { signIn } from "@/auth";
-import { DEFAULT_LOGIN_REDIRECT } from "@/routes";
-import { AuthError } from "next-auth";
-import { getUserByEmail } from "@/data/user";
-import { generateVerificationToken } from "@/lib/tokens";
-import { sentVerificationEmail, sendTwoFactorEmail } from "@/lib/mail";
-import { generateTwoFactorToken } from "@/lib/tokens";
-import { db } from "@/lib/db";
 import { getTwoFactorConfirmationByUserId } from "@/data/two-factor-confirmation";
 import { getTwoFactorTokenByEmail } from "@/data/two-factor-token";
+import { getUserByEmail } from "@/data/user";
+import { db } from "@/lib/db";
+import { sendTwoFactorEmail, sentVerificationEmail } from "@/lib/mail";
+import {
+  generateTwoFactorToken,
+  generateVerificationToken,
+} from "@/lib/tokens";
+import { DEFAULT_LOGIN_REDIRECT } from "@/routes";
+import { LoginSchema } from "@/schemas";
+import { AuthError } from "next-auth";
+import { z } from "zod";
 
-// Acesta se folosesc pentru userii ce folosesc UI
-export async function login(values: z.infer<typeof LoginSchema>) {
-  console.log("SE EXECUTA LOGIN SERVER ACTION");
-  // Validam pe server
+export async function login(
+  values: z.infer<typeof LoginSchema>,
+  callbackUrl?: string | null
+) {
+  // Validăm input-ul pe server folosind schema definită în LoginSchema
   const validateFileds = LoginSchema.safeParse(values);
   if (!validateFileds.success) {
     return { error: "Invalid fields!" };
   }
+
+  // Extragem email-ul, parola și codul 2FA din datele validate
   const { email, password, code } = validateFileds.data;
   const existingUser = await getUserByEmail(email);
 
+  // Verificăm dacă utilizatorul există și are email și parolă setate
   if (!existingUser || !existingUser.email || !existingUser.password) {
     return { error: "Invalid credentials!" };
   }
-  // Prima data verificam daca User-ul are email-ul verificat
+
+  // Verificăm dacă email-ul utilizatorului este confirmat
   if (!existingUser.emailVerified) {
     const verificationToken = await generateVerificationToken(
       existingUser.email
     );
 
+    // Trimitem email-ul de verificare
     await sentVerificationEmail(
       verificationToken.email,
       verificationToken.token
     );
     return { success: "Please confirm your email first!" };
   }
+
+  // Verificăm dacă utilizatorul are autentificare 2FA activată
   if (existingUser.isTwoFactorEnabled && existingUser.email) {
     if (code) {
+      // Verificăm dacă există un token 2FA generat pentru acest email
       const twoFactorToken = await getTwoFactorTokenByEmail(existingUser.email);
       if (!twoFactorToken) {
         return { error: "Invalid code" };
@@ -48,16 +59,18 @@ export async function login(values: z.infer<typeof LoginSchema>) {
         return { error: "Invalid  2FA code" };
       }
 
+      // Verificăm dacă token-ul a expirat
       const hasExpired = new Date(twoFactorToken.expires) < new Date();
-
       if (hasExpired) {
         return { error: "2FA code expired, please login again!" };
       }
 
+      // Ștergem token-ul 2FA din baza de date după ce a fost utilizat
       await db.twoFactorToken.delete({
         where: { id: twoFactorToken.id },
       });
 
+      // Ștergem confirmarea anterioară 2FA dacă există
       const existingConfirmation = await getTwoFactorConfirmationByUserId(
         existingUser.id
       );
@@ -66,23 +79,27 @@ export async function login(values: z.infer<typeof LoginSchema>) {
           where: { id: existingConfirmation.id },
         });
       }
-      // Cream in baza de date twoFactorConfirmation inainte de signIn(adica chiar inainte de authorize - din credetials, iar ulterior callback-ul signIn ce se executa dupa autorizare, va verifica daca user-ul ce tocmai s a autentificat are twoFactorConfirmation )
+
+      // Creăm în baza de date un entry pentru twoFactorConfirmation
+      // Aceasta va fi verificată de callback-ul de signIn
       await db.twoFactorConfirmation.create({
         data: { userId: existingUser.id },
       });
     } else {
-      // Pentru prima actionare a butonului login, returnam user-ului obicetul ce va genera re-randarea UI
+      // Dacă utilizatorul nu a introdus codul, generăm un nou token 2FA și îl trimitem pe email
       const twoFactorToken = await generateTwoFactorToken(existingUser.email);
       await sendTwoFactorEmail(twoFactorToken.email, twoFactorToken.token);
       return { twoFactor: true };
     }
   }
-  // Când apelezi signIn("credentials", {...}) în funcția login, NextAuth va folosi authorize(credentials) definit în auth.config.ts
+
+  // Apelăm funcția signIn din NextAuth pentru autentificare cu email și parolă
+  // NextAuth va folosi authorize(credentials) definit în auth.config.ts
   try {
     await signIn("credentials", {
       email,
       password,
-      redirectTo: DEFAULT_LOGIN_REDIRECT,
+      redirectTo: callbackUrl || DEFAULT_LOGIN_REDIRECT,
     });
   } catch (error) {
     if (error instanceof AuthError) {

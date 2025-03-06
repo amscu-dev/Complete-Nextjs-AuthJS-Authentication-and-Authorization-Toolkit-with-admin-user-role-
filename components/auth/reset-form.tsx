@@ -1,4 +1,5 @@
 "use client";
+import { resetPassword } from "@/actions/reset-password";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -11,33 +12,39 @@ import {
 import { Input } from "@/components/ui/input";
 import { ResetPasswordSchema } from "@/schemas";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import CardWrapper from "./card-wrapper";
 import FormError from "../form-error";
 import FormSuccess from "../form-success";
-import { resetPassword } from "@/actions/reset-password";
-import { useState, useTransition } from "react";
+import CardWrapper from "./card-wrapper";
 
 function ResetForm() {
+  // Stările pentru procesul de resetare a parolei (pending, eroare și succes)
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | undefined>("");
   const [success, setSuccess] = useState<string | undefined>("");
+
+  // Inițializarea formularului cu React Hook Form și validarea cu Zod
   const form = useForm<z.infer<typeof ResetPasswordSchema>>({
-    resolver: zodResolver(ResetPasswordSchema),
+    resolver: zodResolver(ResetPasswordSchema), // Folosește schema Zod pentru validarea datelor
     defaultValues: {
       email: "",
     },
   });
 
+  // Funcția care este apelată la trimiterea formularului
   const onSubmit = (values: z.infer<typeof ResetPasswordSchema>) => {
-    setError("");
-    setSuccess("");
+    setError(""); // Resetează mesajul de eroare
+    setSuccess(""); // Resetează mesajul de succes
+
+    // Începe tranziția pentru a efectua cererea de resetare a parolei
     startTransition(() => {
-      resetPassword(values).then((data) => {
-        setError(data?.error);
-        setSuccess(data?.success);
-      });
+      resetPassword(values) // Apelează funcția de resetare a parolei
+        .then((data) => {
+          setError(data?.error); // Setează mesajul de eroare în caz de eșec
+          setSuccess(data?.success); // Setează mesajul de succes
+        });
     });
   };
 

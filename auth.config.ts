@@ -1,47 +1,59 @@
-import type { NextAuthConfig } from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import { LoginSchema } from "./schemas";
-import { getUserByEmail } from "./data/user";
-import bcrypt from "bcryptjs";
-import Github from "next-auth/providers/github";
-import Google from "next-auth/providers/google";
+// Importăm pachetele necesare pentru autentificare
+import bcrypt from "bcryptjs"; // Folosit pentru compararea parolelor criptate
+import type { NextAuthConfig } from "next-auth"; // Tipurile necesare pentru configurația NextAuth
+import Credentials from "next-auth/providers/credentials"; // Provider pentru autentificare cu credențiale (email/parolă)
+import Github from "next-auth/providers/github"; // Provider pentru autentificare cu GitHub
+import Google from "next-auth/providers/google"; // Provider pentru autentificare cu Google
+import { getUserByEmail } from "./data/user"; // Funcția care caută utilizatorii după email
+import { LoginSchema } from "./schemas"; // Schema de validare a datelor de login
 
+// Configurarea NextAuth
 export default {
   providers: [
+    // Provider pentru Google OAuth
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.GOOGLE_CLIENT_ID, // Client ID pentru autentificarea Google
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET, // Client Secret pentru autentificarea Google
     }),
+    // Provider pentru GitHub OAuth
     Github({
-      clientId: process.env.GITHUB_CLIENT_ID,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET,
+      clientId: process.env.GITHUB_CLIENT_ID, // Client ID pentru autentificarea GitHub
+      clientSecret: process.env.GITHUB_CLIENT_SECRET, // Client Secret pentru autentificarea GitHub
     }),
+    // Provider pentru autentificare cu credențiale (email + parolă)
     Credentials({
+      // Funcția care autorizează un utilizator cu credențiale (email + parolă)
       async authorize(credentials) {
         console.log("SE EXECUTA AUTHORIZE-CREDENTIALS-PROVIDER");
+
+        // Validăm datele de autentificare folosind schema LoginSchema
         const validateFields = LoginSchema.safeParse(credentials);
+
+        // Dacă validarea este reușită
         if (validateFields.success) {
-          const { email, password } = validateFields.data;
+          const { email, password } = validateFields.data; // Extragem email-ul și parola
+
+          // Căutăm utilizatorul în baza de date folosind email-ul
           const user = await getUserByEmail(email);
-          // in cazul in care ne inregistram folosind OAuth atunci va exista un email in baza de date dar nu va exista o parola
-          // Daca nu exista user => nu este inregistram
-          // Daca exista email dar nu exista parola => este inregistrat dar nu poate folosi autentificarea prin credentiale
-          if (!user || !user.password) return null;
-          // Daca exista si user si parola, verificam daca parola este corecta!
+
+          // Verificăm dacă există un utilizator cu email-ul respectiv și dacă are o parolă setată
+          // În cazul autentificării prin OAuth, utilizatorul poate avea un email, dar nu și o parolă
+          if (!user || !user.password) return null; // Dacă nu există utilizator sau nu există parolă, returnăm null
+
+          // Dacă există un utilizator cu parolă, comparăm parola trimisă cu cea stocată
           const passwordMatch = await bcrypt.compare(password, user.password);
-          // Dacă authorize returnează un user valid, NextAuth va considera că autentificarea a avut loc cu succes și va genera un cookie de sesiune pentru utilizator.
+
+          // Dacă parolele se potrivesc, returnăm utilizatorul
           if (passwordMatch) return user;
         }
-        /*
-        authorize nu aruncă erori, dar returnează null în caz de eșec.
-        NextAuth se ocupă de eroare și o returnează ca parte din rezultatul obținut prin signIn.
-        Eroarea este capturată atunci când verifici câmpul error din rezultatul signIn
-        */
+
+        // Dacă nu se potrivesc, autorizația eșuează și returnăm null
+        // NextAuth va gestiona eroarea și o va include în rezultatele autentificării
         return null;
       },
     }),
   ],
 } satisfies NextAuthConfig;
 
-// Acest fisier este obligatoriu deoarece Prisma nu functioneaza pe Edge;
-// Acest fisier va fii folosit pentru a apela middleware -ul
+// Notă: Acest fișier este obligatoriu, deoarece Prisma nu funcționează pe Edge;
+// Fișierul este folosit pentru a apela middleware-ul NextAuth.

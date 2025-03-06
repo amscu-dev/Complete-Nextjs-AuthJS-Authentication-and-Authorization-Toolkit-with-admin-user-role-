@@ -1,96 +1,127 @@
+import { getTwoFactorConfirmationByUserId } from "@/data/two-factor-confirmation";
+import { db } from "@/lib/db";
+import { PrismaAdapter } from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import authConfig from "./auth.config";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { db } from "@/lib/db";
+import { getAccountByUserId } from "./data/account";
 import { getUserById } from "./data/user";
-import { getTwoFactorConfirmationByUserId } from "@/data/two-factor-confirmation";
-// Sintaxa pentru ca Prisma sa poata fii utilizat pe edge.
-// NextAuth creează automat un utilizator în baza de date când cineva se autentifică cu OAuth, dar doar dacă folosești un adapter, cum ar fi PrismaAdapter.
-// În NextAuth, callback-urile jwt și session sunt executate la fiecare request pentru a menține sesiunea actualizată și validă.
-/*
-Când se execută jwt?
-1️⃣ La login – când user-ul se autentifică pentru prima dată.
-2️⃣ La fiecare request către server – pentru a verifica dacă token-ul este încă valid.
-3️⃣ La fiecare refresh token (dacă există refresh logic implementat).
-*/
-// Session nu este stocată permanent pe server (pentru strategy: "jwt"
-// Session se execută, astfel de fiecare data cand tokenul JWT se schimba, deci la fiecare request pentru a reconstrui sesiunea din token.
-// Callback-urile jwt și session se execută înainte ca răspunsul să plece către client
+
+// NOTE IMPORTANTE:
+// 1. Prisma poate fi folosită pe edge cu NextAuth prin PrismaAdapter
+// 2. NextAuth creează automat un utilizator în baza de date când cineva se autentifică cu OAuth, dar doar dacă folosești un adapter, cum ar fi PrismaAdapter.
+// 3. Callback-urile 'jwt' și 'session' sunt executate la fiecare request pentru a menține sesiunea actualizată și validă.
+// 4. Când se execută jwt?
+// 4.1 La login – când user-ul se autentifică pentru prima dată.
+// 4.2 La fiecare request către server – pentru a verifica dacă token-ul este încă valid.
+// 4.3 La fiecare refresh token (dacă există refresh logic implementat).
+// 5. Session nu este stocată permanent pe server (pentru strategy: "jwt"
+// 6. Session se execută, astfel de fiecare data cand tokenul JWT se schimba, deci la fiecare request pentru a reconstrui sesiunea din token.
+// 7. Callback-urile jwt și session se execută înainte ca răspunsul să plece către client.
+
 export const {
   auth,
   signIn,
   signOut,
   handlers: { GET, POST },
 } = NextAuth({
+  // Configurarea paginilor pentru autentificare
   pages: {
-    signIn: "/auth/login",
-    error: "/auth/error",
+    signIn: "/auth/login", // Pagină de login
+    error: "/auth/error", // Pagină de eroare
   },
+
+  // Evenimentele din NextAuth
   events: {
-    // Pentru cei ce folosesc OAuth modificam automat in baza de date emailVerified
     async linkAccount({ user }) {
-      // se execută după ce contul este asociat în baza de date, dar înainte ca sesiunea să fie actualizată. (dupa signIn)
-      console.log("SE EXECUTA EVENT UL linkACCOUNT");
+      // Evenimentul care se execută după asocierea unui cont OAuth cu utilizatorul în baza de date
       await db.user.update({
-        where: { id: user.id },
-        data: { emailVerified: new Date() },
+        where: { id: user.id }, // Actualizăm utilizatorul cu data de verificare a email-ului
+        data: { emailVerified: new Date() }, // Setăm emailVerified la data curentă
       });
     },
   },
+
+  // Callback-urile NextAuth
   callbacks: {
+    // Callback pentru procesul de autentificare
+    // Se execută după autentificarea de la provider, înainte ca utilizatorul să fie stocat în sesiune.
     async signIn({ user, account }) {
-      console.log("SE EXECUTA CALLBACK-UL SIGN-IN");
       console.log(user, account);
-      // Se execută după autentificarea de la provider, înainte ca utilizatorul să fie stocat în sesiune.
-      // Daca nu am folosi un adater precum Prisma, in acest pas ar trebui sa cream un user in baza de date pe baza informatiilor primite de OAuth Provider.
-      // 1. ALLOW OAuth without email verification.
+
+      // 1. Permitem autentificarea OAuth fără verificarea email-ului
       if (account?.provider !== "credentials") return true;
-      // 2. BLOCK Credentials without email verification.
+
+      // 2. Blocăm autentificarea cu credențiale fără verificarea email-ului
       const existingUser = await getUserById(user.id);
       if (!existingUser || !existingUser.emailVerified) {
-        return false;
+        return false; // Dacă email-ul nu este verificat, blocăm autentificarea
       }
-      // 3. 2FA Check
 
+      // 3. Verificare 2FA
       if (existingUser.isTwoFactorEnabled) {
         const twoFactorConfirmation = await getTwoFactorConfirmationByUserId(
           existingUser.id
         );
-        if (!twoFactorConfirmation) return false;
-        // Delete two factor confirmation for next sign in
+        if (!twoFactorConfirmation) return false; // Dacă nu există confirmare 2FA, blocăm autentificarea
         await db.twoFactorConfirmation.delete({
-          where: { id: twoFactorConfirmation.id },
+          where: { id: twoFactorConfirmation.id }, // Ștergem confirmarea 2FA pentru următoarea autentificare
         });
       }
-      return true; // Permitem autentificarea să continue
+      return true; // Permitem autentificarea
     },
+
+    // Callback pentru sesiune
+    // Se execută după jwt, când sesiunea este generată și trimisă către client.
     async session({ token, session }) {
-      // Se execută după jwt, când sesiunea este generată și trimisă către client.
-      console.log("SE EXECUTA CALLBACK-UL SESSION");
-      console.log({ sessionToken: token });
+      // Atribuim valorile din token la sesiunea curentă
       if (token.sub && session.user) {
-        // Atasam id user-ului la sesiunea curenta
         session.user.id = token.sub;
       }
       if (token.role && session.user) {
         session.user.role = token.role as "ADMIN" | "USER";
       }
+      if (session.user) {
+        session.user.isTwoFactorEnabled = token.isTwoFactorEnabled as boolean;
+        session.user.isOAuth = token.isOAuth as boolean;
+      }
+
+      // Actualizăm sesiunea cu informațiile utilizatorului (update())
+      if (session.user) {
+        session.user.name = token.name as string;
+        session.user.email = token.email as string;
+      }
+
       console.log({ session: session });
-      return session; // Sesiunea finala impreuna cu cererea de redirectionare merge catre utilizator
+      return session; // Returnăm sesiunea finală
     },
-    async jwt({ token, user, profile, trigger }) {
-      // Se execută după signIn, dar înainte ca token-ul JWT să fie generat.
-      console.log("SE EXECUTA CALLBACK-UL JWT");
-      console.log({ token });
+
+    // Callback pentru generarea JWT
+    // Se execută după signIn, dar înainte ca token-ul JWT să fie generat.
+    async jwt({ token }) {
+      // Verificăm și adăugăm informațiile necesare în token
       if (!token.sub) return token;
       const existingUser = await getUserById(token.sub);
       if (!existingUser) return token;
+
+      // Verificăm dacă utilizatorul s-a logat prin OAuth
+      const existingAccount = await getAccountByUserId(existingUser.id);
       token.role = existingUser.role;
-      return token; // Permitem crearea sesiunii
+      token.isTwoFactorEnabled = existingUser.isTwoFactorEnabled;
+      token.isOAuth = !!existingAccount; // Setăm isOAuth dacă există un cont asociat OAuth
+
+      // Actualizăm token-ul cu informațiile utilizatorului
+      token.name = existingUser.name;
+      token.email = existingUser.email;
+      return token; // Permitem crearea token-ului JWT
     },
   },
-  // OAuth cu Auth.js (NextAuth.js) și Prisma, un utilizator este creat automat în baza de date dacă folosești PrismaAdapter
+
+  // Configurarea PrismaAdapter
   adapter: PrismaAdapter(db),
+
+  // Folosim strategia JWT pentru sesiune
   session: { strategy: "jwt" },
+
+  // Configurația suplimentară NextAuth
   ...authConfig,
 });

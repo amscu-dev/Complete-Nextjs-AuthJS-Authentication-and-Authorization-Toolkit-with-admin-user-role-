@@ -1,14 +1,15 @@
 "use server";
-import { RegisterSchema } from "@/schemas";
-import { z } from "zod";
-import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+
 import { getUserByEmail } from "@/data/user";
-import { generateVerificationToken } from "@/lib/tokens";
+import { db } from "@/lib/db";
 import { sentVerificationEmail } from "@/lib/mail";
+import { generateVerificationToken } from "@/lib/tokens";
+import { RegisterSchema } from "@/schemas";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
 
 export async function register(values: z.infer<typeof RegisterSchema>) {
-  // Validam pe server
+  // Validăm datele de intrare conform schemelor definite
   const validateFields = RegisterSchema.safeParse(values);
   if (!validateFields.success) {
     return { error: "Invalid fields!" };
@@ -16,12 +17,16 @@ export async function register(values: z.infer<typeof RegisterSchema>) {
 
   const { email, password, name } = validateFields.data;
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  // Verificăm dacă utilizatorul există deja în baza de date
   const existingUser = await getUserByEmail(email);
-
   if (existingUser) {
     return { error: "Email already in use!" };
   }
+
+  // Criptăm parola utilizatorului pentru securitate
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  // Creăm un nou utilizator în baza de date
   await db.user.create({
     data: {
       name,
@@ -30,7 +35,9 @@ export async function register(values: z.infer<typeof RegisterSchema>) {
     },
   });
 
+  // Generăm un token de verificare și trimitem email-ul de confirmare
   const verificationToken = await generateVerificationToken(email);
   await sentVerificationEmail(verificationToken.email, verificationToken.token);
+
   return { success: "Confirmation email sent!" };
 }

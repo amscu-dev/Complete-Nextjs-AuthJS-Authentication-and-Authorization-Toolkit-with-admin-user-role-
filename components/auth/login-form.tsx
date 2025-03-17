@@ -14,7 +14,6 @@ import { LoginSchema } from "@/schemas";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";

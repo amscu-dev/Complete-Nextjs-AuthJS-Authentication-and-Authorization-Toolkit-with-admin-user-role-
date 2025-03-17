@@ -20,6 +20,7 @@ import { z } from "zod";
 import FormError from "../form-error";
 import FormSuccess from "../form-success";
 import CardWrapper from "./card-wrapper";
+import { useSearchParams } from "next/navigation";
 
 function LoginForm() {
   // State pentru controlul vizibilității parolei

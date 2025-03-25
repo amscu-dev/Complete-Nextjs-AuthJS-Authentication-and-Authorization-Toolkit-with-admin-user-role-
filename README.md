@@ -1,8 +1,8 @@
 # Next-Auth Toolkit
 
-**Puteți încerca o versiune complet funcțională a acestui feature :** https://complete-nextjs-auth-js-alexandru-marinescus-projects-24c51d30.vercel.app/
+**Puteți încerca o versiune complet funcțională a acestui feature :** https://www.nextauthv5-complete-toolkit.xyz/
 
-**Sursa video pentru prezentarea toolkit-ului :**
+**Sursa video pentru prezentarea toolkit-ului :** https://www.loom.com/share/cab80b9a6a364f0fb77102e6a94e1f55?sid=68b8420e-50c3-402d-816f-4ac05aae9b0d
 
 ## Descriere
 
